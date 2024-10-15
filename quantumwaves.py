@@ -1,25 +1,24 @@
-from pyqtgraph.Qt import QtCore, QtGui
-from pyqtgraph import Vector
+import os
+import sys
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-import pyqtgraph.exporters
 import numpy as np
-import sys, os
+from PyQt5.QtWidgets import QApplication
 
-from PIL import Image
+from pyqtgraph.Qt import QtCore
+from pyqtgraph import Vector
 from pathlib import Path
 from math import sqrt
-
-import matplotlib.pyplot as plt
-
+from matplotlib import pyplot as plt
 from numba import njit, prange
-from schrodinger import schrodinger
-
+from scipy import interpolate
 from time import time
 
-import numpy as np
+from schrodinger import schrodinger
 
-from scipy import interpolate
+from pyqtgraph.Qt import QtGui
+import pyqtgraph.exporters
+from PIL import Image
 
 do_parallel = False
 do_collapse = False
@@ -49,7 +48,7 @@ if len(sys.argv) >= 2:
 name = 'decay_movement9_follow'
 name = name + ('_' + layer) if layer != '' else name
 
-folder = Path('C:/frames') / name
+folder = Path('D:/frames') / name
 
 res = np.array((1920, 1080))
 #res = np.array((3840, 2160))
@@ -66,7 +65,7 @@ if record:
 pg.setConfigOptions(antialias=True)
 
 ## Create a GL View widget to display data
-app = QtGui.QApplication([])
+app = QApplication([])
 w = gl.GLViewWidget()
 w.show()
 w.setWindowTitle(f'{os.path.basename(__file__)} ... {sim_size}x{sim_size} ... {f"RENDERING {name}" if record else "PREVIEW"}')
@@ -92,24 +91,29 @@ w.setWindowTitle(f'{os.path.basename(__file__)} ... {sim_size}x{sim_size} ... {f
 # WF FOLLOW MOVEMENT
 w.setCameraPosition(distance=80)
 
-w.resize(res[0],res[1])
-w.setFixedSize(res[0],res[1])
+w.resize(int(res[0]), int(res[1]))
+w.setFixedSize(int(res[0]), int(res[1]))
 
- # move window in OS
+screen_width = app.desktop().screenGeometry().width()
+x = int(screen_width / 2 - res[0] / 2)
+
+screen_height = app.desktop().screenGeometry().height()
+y = int(screen_height / 2 - res[1] / 2)
+
+# move window in OS
 # this is overkill, I know
-w.move( app.desktop().screenGeometry().width()  / 2 - res[0] / 2,
-        app.desktop().screenGeometry().height() / 2 - res[1] / 2)
+w.move(x, y)
 
 @njit(cache=True)
 def cubic_interp1d(x0, x, y):
     """
     Interpolate a 1-D function using cubic splines.
-      x0 : a float or an 1d-array
-      x : (N,) array_like
-          A 1-D array of real/complex values.
-      y : (N,) array_like
-          A 1-D array of real values. The length of y along the
-          interpolation axis must be equal to the length of x.
+        x0 : a float or an 1d-array
+        x : (N,) array_like
+            A 1-D array of real/complex values.
+        y : (N,) array_like
+            A 1-D array of real values. The length of y along the
+        interpolation axis must be equal to the length of x.
 
     Implement a trick to generate at first step the cholesky matrice L of
     the tridiagonal matrice A (thus L is a bidiagonal matrice that
@@ -149,7 +153,7 @@ def cubic_interp1d(x0, x, y):
     B0 = 0.0 # natural boundary
     z[0] = B0 / Li[0]
 
-    for i in range(1, size-1, 1):
+    for i in range(1, size-1):
         Li_1[i] = xdiff[i-1] / Li[i-1]
         Li[i] = sqrt(2*(xdiff[i-1]+xdiff[i]) - Li_1[i-1] * Li_1[i-1])
         Bi = 6*(ydiff[i]/xdiff[i] - ydiff[i-1]/xdiff[i-1])
@@ -177,11 +181,10 @@ def cubic_interp1d(x0, x, y):
     hi1 = xi1 - xi0
 
     # calculate cubic
-    f0 = zi0/(6*hi1)*(xi1-x0)**3 + \
-         zi1/(6*hi1)*(x0-xi0)**3 + \
-         (yi1/hi1 - zi1*hi1/6)*(x0-xi0) + \
-         (yi0/hi1 - zi0*hi1/6)*(xi1-x0)
-    return f0
+    return zi0/(6*hi1)*(xi1-x0)**3 + \
+        zi1/(6*hi1)*(x0-xi0)**3 + \
+        (yi1/hi1 - zi1*hi1/6)*(x0-xi0) + \
+        (yi0/hi1 - zi0*hi1/6)*(xi1-x0)
 
 @njit(cache=True)
 def make_gridlines(X, Y, axis=0, stride=4, extend=3):
@@ -203,8 +206,8 @@ def make_gridlines(X, Y, axis=0, stride=4, extend=3):
 
     for n in prange(N):
 
-        i0 = n*(P)
-        i1 = n*(P) + n*(P) - 1
+        i0 = n * P
+        i1 = n * P + n * P - 1
 
         a = int(axis)
         b = int(not axis)
@@ -218,17 +221,17 @@ def make_gridlines(X, Y, axis=0, stride=4, extend=3):
             points[i0 : (i1+1), a] = 0 + n * stride
             fading = (1 - (n//2)/(N//2))
 
-        points[i0,   b] = (- Y)
-        points[i0+1, b] = 0
-        points[i0+2, b] = (+ Y)
-        points[i0+3, b] = (Y * 2)
+        points[i0, b] = -Y
+        points[i0 + 1, b] = 0
+        points[i0 + 2, b] = Y
+        points[i0 + 3, b] = Y * 2
 
         colors[i0,   3] = 0
         colors[i0+1, 3] = .25 * fading
         colors[i0+2, 3] = .25 * fading
         colors[i0+3, 3] = 0
 
-        if n == 0 or n == (N-1):
+        if n in (0, N-1):
             # avoid overlaying with previous wavelines
             colors[i0+1, 3] = 0
             colors[i0+2, 3] = 0
@@ -249,7 +252,7 @@ def make_wavelines(wavedata,
     N = X // stride # number of lines
 
     if not smoothing:
-        P = int(Y)
+        P = Y
 
     M = N * (P + 2) # total number of points
 
@@ -258,11 +261,7 @@ def make_wavelines(wavedata,
 
     y0 = np.arange(0, X)
 
-    if smoothing:
-        # interpolation parameter for splines
-        y = np.linspace(0, X-1, P)
-    else:
-        y = np.linspace(0, X-1, X)
+    y = np.linspace(0, X-1, P) if smoothing else np.linspace(0, X-1, X)
 
 
     for x in prange(N):
@@ -281,16 +280,10 @@ def make_wavelines(wavedata,
         colors[i0, 3] = 0
 
         # (ovs, 3)
-        if axis == 0:
-            z0 = wavedata[w, :]
-        else:
-            z0 = wavedata[:, w]
+        z0 = wavedata[w, :] if axis == 0 else wavedata[:, w]
 
-        if smoothing:
-            # interpolate wave lines into splines for smoother lines
-            z = cubic_interp1d(y, y0, z0)
-        else:
-            z = z0
+        # interpolate wave lines into splines for smoother lines
+        z = cubic_interp1d(y, y0, z0) if smoothing else z0
 
         # put interpolated lines into destsination arrays
         points[i0 + 1: i1, 1] = y
@@ -298,20 +291,17 @@ def make_wavelines(wavedata,
         colors[i0 + 1: i1, 3] = .33#points[i0 + 1: i1, 2] + .25
 
         # end at horizon, alpha=0
-        points[i1, 1] = (2 * Y)
+        points[i1, 1] = 2 * Y
         points[i1, 2] = 0
         colors[i1, 3] = 0
 
     return points, colors # (N, 3), (N, 4)
 
 def surf_smoothing(surf_data, smoothing=2):
-
     X = surf_data.shape[0]
     Y = surf_data.shape[1]
-
-    x = np.arange(X)
-    y = np.arange(Y)
-    f = interpolate.interp2d(x, y, surf_data, kind='cubic')
+    x, y = np.arange(X), np.arange(Y)
+    f = interpolate.RectBivariateSpline(x, y, surf_data, kx=3, ky=3)
 
     xnew = np.linspace(0, X, X*smoothing)
     ynew = np.linspace(0, Y, Y*smoothing)
@@ -410,7 +400,7 @@ for elem in [surf]:
     elem.translate(-rescale/2,-rescale/2,0)
     elem.scale(1,1,zscale*surf_smooth)
 
-    if (layer == '' or layer == 'surf'):
+    if layer in ['', 'surf']:
         w.addItem(elem)
 
 # prep the particle mesh
@@ -462,33 +452,34 @@ def follow(pdf):
     #ki = .05 # fast follow
     ki = .01 # medium follow
     #ki = .005 # slow follow
-    i += ki*(dx)
+    i += ki * dx
 
     new_xy = i
 
     #d  = .005*((dx) - prev)
     #new_xy += d
 
-    prev = (new_xy).copy()
+    prev = new_xy.copy()
 
     w.opts['center'] = Vector(new_xy[0], new_xy[1], 0)
 
 def update():
     global surf, index, folder, last_time, start_time, record, fps, timer
-
-    t = index
-
+    
     if index >= frames and record:
         app.quit()
 
     if record:
 
         # (time / frame) * frames remaining
-        ETA = (time()-last_time) * (frames-index)
-        ETA = (ETA / 60) # sec to min ... / 60 # seconds to hours
-        ETA = np.modf(ETA)
-        ETA = int(ETA[1]), int(round(ETA[0]*60))
-        ETA = str(ETA[0]) + ":" + str(ETA[1]).zfill(2)
+        # ETA = (time()-last_time) * (frames-index)
+        # ETA = (ETA / 60) # sec to min ... / 60 # seconds to hours
+        # ETA = np.modf(ETA)
+        # ETA = int(ETA[1]), int(round(ETA[0]*60))
+        # ETA = str(ETA[0]) + ":" + str(ETA[1]).zfill(2)
+        ETA = (time() - last_time) * (frames - index)
+        ETA = int(ETA / 60), int(round((ETA % 60)))
+        
         last_time = time()
 
         print(index, 'ETA', ETA)
@@ -499,107 +490,172 @@ def update():
         last_time = time()
 
     ##print('>>>', time()-lt)
-    lt = time()
+    time()
 
     d = sim.simulate_frame(debug=0)
     #global d
 
     #print('>>>', time()-lt)
-    lt = time()
+    time()
 
-    zdata = d
-    zdata = np.abs(zdata)**2 # complex square: amplitude -> density
+    # zdata = d
+    # zdata = np.abs(zdata)**2 # complex square: amplitude -> density
+
+    zdata = np.abs(d) ** 2
 
     if do_smoothing:
         zdata = surf_smoothing(zdata, smoothing=surf_smooth)
 
     #print('>>>', time()-lt)
-    lt = time()
+    time()
+    def interpolate(x):
+        """
+        Interpolates the given value `x` using numpy's `interp` function.
 
-    cremap = lambda x: np.interp(x, [0,4], [0,1])
-    zcol = cmap(cremap(zdata))
-    zcol[:,:,3] = zdata + .1
-    zcol[:,:,3] *= 0.75
+        Parameters:
+            x (float): The value to be interpolated.
 
-    #print('>>>', time()-lt)
-    lt = time()
+        Returns:
+            float: The interpolated value.
+        """
+        return np.interp(x, [0, 4], [0, 1])
+
+    zcol = cmap(interpolate(zdata))
+    zcol[:, :, 3] = zdata + .1
+    zcol[:, :, 3] *= 0.75
+
+    time()
 
     dreal, dimag = d.real, np.flipud(d.imag)
     rpoints, realcolors = make_wavelines(dreal, axis=0, smoothing=do_smoothing)
     ipoints, imagcolors = make_wavelines(dimag, axis=1, smoothing=do_smoothing)
 
-    realcolors[:,0:3:2] *= rcol_bias # bias more red
-    imagcolors[:,0] *= icol_bias # bias more blue
+    realcolors[:, 0:3:2] *= rcol_bias
+    imagcolors[:, 0] *= icol_bias
 
-    #print('>>>', time()-lt)
-    lt = time()
+    time()
 
     if do_collapse:
-        surf.setData(z=zdata/zdata.max(), colors=zcol)
-        surf.setData(z=3*zdata/zdata.max(), colors=zcol)
-        #surf.setData(z=zdata, colors=zcol)
+        surf.setData(z=zdata / zdata.max(), colors=zcol)
+        surf.setData(z=3 * zdata / zdata.max(), colors=zcol)
     else:
         surf.setData(z=zdata, colors=zcol)
 
     real.setData(pos=rpoints, color=realcolors)
     imag.setData(pos=ipoints, color=imagcolors)
 
-    #print('>>>', time()-lt)
-    lt = time()
+    time()
 
-    dazim = -.09#+.05#0.25
-    delev = +.005#1#+.05/10#1*2*.5
-    ddist = 0#-.08#0#+.05
-    #dazim = +.05#0.25
-    #delev = +.05/10#1*2*.5
-    #ddist = -.08#0#+.05
-
-    #dazim = 0#+.05#0.25
-    #delev = 0#+.005#1#+.05/10#1*2*.5
-    #ddist = 0#-.08#0#+.05
+    dazim = -.09
+    delev = +.005
+    ddist = 0
 
     if 'follow' in name:
         follow(zdata)
 
     w.orbit(dazim, delev)
-    w.setCameraPosition(distance=w.opts['distance']+ddist)
+    w.setCameraPosition(distance=w.opts['distance'] + ddist)
 
-    #print('>>>', time()-lt); print()
-    lt = time()
+    time()
 
     index += 1
 
-    if (sim.collapse and index % collapse_interval == 0 and index > 0
+    if sim.collapse and index % collapse_interval == 0 and index > 0 and index < collapse_interval * 2:
+        sim.dual_collapse_wavefunction()
 
-            and index < collapse_interval*2 # do once only
+    # cremap = lambda x: np.interp(x, [0,4], [0,1])
+    # zcol = cmap(cremap(zdata))
+    # zcol[:,:,3] = zdata + .1
+    # zcol[:,:,3] *= 0.75
 
-        ):
+    # #print('>>>', time()-lt)
+    # lt = time()
 
-        #selection = sim.collapse_wavefunction()
-        selection = sim.dual_collapse_wavefunction()
+    # dreal, dimag = d.real, np.flipud(d.imag)
+    # rpoints, realcolors = make_wavelines(dreal, axis=0, smoothing=do_smoothing)
+    # ipoints, imagcolors = make_wavelines(dimag, axis=1, smoothing=do_smoothing)
 
-def ffmpeg(folder, name, FPS):
+    # realcolors[:,0:3:2] *= rcol_bias # bias more red
+    # imagcolors[:,0] *= icol_bias # bias more blue
 
+    # #print('>>>', time()-lt)
+    # lt = time()
+
+    # if do_collapse:
+    #     surf.setData(z=zdata/zdata.max(), colors=zcol)
+    #     surf.setData(z=3*zdata/zdata.max(), colors=zcol)
+    #     #surf.setData(z=zdata, colors=zcol)
+    # else:
+    #     surf.setData(z=zdata, colors=zcol)
+
+    # real.setData(pos=rpoints, color=realcolors)
+    # imag.setData(pos=ipoints, color=imagcolors)
+
+    # #print('>>>', time()-lt)
+    # lt = time()
+
+    # dazim = -.09#+.05#0.25
+    # delev = +.005#1#+.05/10#1*2*.5
+    # ddist = 0#-.08#0#+.05
+    # #dazim = +.05#0.25
+    # #delev = +.05/10#1*2*.5
+    # #ddist = -.08#0#+.05
+
+    # #dazim = 0#+.05#0.25
+    # #delev = 0#+.005#1#+.05/10#1*2*.5
+    # #ddist = 0#-.08#0#+.05
+
+    # if 'follow' in name:
+    #     follow(zdata)
+
+    # w.orbit(dazim, delev)
+    # w.setCameraPosition(distance=w.opts['distance']+ddist)
+
+    # #print('>>>', time()-lt); print()
+    # lt = time()
+
+    # index += 1
+
+    # if (sim.collapse and index % collapse_interval == 0 and index > 0
+
+    #         and index < collapse_interval*2 # do once only
+
+    #     ):
+
+    #     #selection = sim.collapse_wavefunction()
+    #     selection = sim.dual_collapse_wavefunction()
+
+def convert_images_to_video(folder, name, fps):
+    """
+    Converts a folder of images into a video using the ffmpeg library.
+
+    Args:
+        folder (str): The path to the folder containing the images.
+        name (str): The name of the video file to be created.
+        fps (int): The frames per second of the output video.
+
+    Returns:
+        None
+    """
     if not record:
         return
 
-    dest = Path('C:/')
-    dest = dest / Path(f'Veritasium/ManyWorlds/{name}.mov')
+    dest = Path('D:/') / f'Veritasium/ManyWorlds/{name}.mov'
 
-    convert_cmd = (f'''ffmpeg -f image2 -framerate {FPS}'''
-                       f''' -i {str(folder / name)}_%d.png'''
-                       f''' -c:v prores_ks -profile:v 3'''
-                       f''' "{str(dest)}" ''')
+    convert_cmd = (
+        f'ffmpeg -f image2 -framerate {fps} '
+        f'-i {folder / name}_%d.png '
+        f'-c:v prores_ks -profile:v 3 '
+        f'"{dest}"'
+    )
 
-    print('CONVERTING >>>', convert_cmd)
     os.system(convert_cmd)
 
     if dest.exists():
-        print('DELETING >>>', folder)
-        filelist = [f for f in os.listdir(str(folder.absolute())) if f.endswith(".png") ]
+        filelist = [f for f in os.listdir(folder.absolute()) if f.endswith(".png")]
 
         for f in filelist:
-            os.remove(os.path.join(folder, f))
+            os.remove(folder / f)
 
         folder.rmdir()
 
@@ -610,9 +666,7 @@ start_time = time()
 timer.start(0)
 
 ## Start Qt event loop unless running in interactive mode.
-if __name__ == '__main__':
-    if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
-        QtGui.QApplication.instance().exec_()
+if __name__ == '__main__' and (sys.flags.interactive != 1 or not hasattr(QtCore, 'PYQT_VERSION')):
+    QApplication.instance().exec_()
 
-
-ffmpeg(folder, name, fps)
+convert_images_to_video(folder, name, fps)

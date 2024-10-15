@@ -391,11 +391,8 @@ class Simulate:
 		self.H1 = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX))
 		self.H1 = sp.sparse.dia_matrix(self.H1)
 
-		self.HX = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX - self.V_x_matrix))
-		self.HX = sp.sparse.dia_matrix(self.HX)
-
-		self.HY = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX - self.V_y_matrix))
-		self.HY = sp.sparse.dia_matrix(self.HY)
+		self.HX = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX - self.V_x_matrix)).tocsc()
+		self.HY = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX - self.V_y_matrix)).tocsc()
 
 		self.start_time = time()
 		self.i_time = time()
@@ -404,7 +401,7 @@ class Simulate:
 
 		for f in range(self.FRAMES):
 			start=time()
-			simulate_frame(f)
+			self.simulate_frame(f)
 			print('>>>',time()-start)
 
 		#dataname = f"C:/data/sim_{N}x{N}.npz"
@@ -564,7 +561,7 @@ class Simulate:
 		ETA = (ETA / 60) # sec to min ... / 60 # seconds to hours
 		ETA = np.modf(ETA)
 		ETA = int(ETA[1]), int(round(ETA[0]*60))
-		ETA = str(ETA[0]) + ":" + str(ETA[1]).zfill(2)
+		ETA = f"{ETA[0]}:{ETA[1]:02d}"
 
 		self.i_time = time()
 
