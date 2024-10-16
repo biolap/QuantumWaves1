@@ -352,14 +352,16 @@ class Simulate:
 			norm = np.sqrt(util.integrate(np.abs(wave_function)**2, N, step))
 			self.wave_function += wave_function/norm
 
-		LAPLACE_MATRIX = sp.sparse.lil_matrix(-2*sp.sparse.identity(N*N))
+		LAPLACE_MATRIX = sp.sparse.lil_matrix(-2 * sp.sparse.identity(N * N))
 		for i in range(N):
-			for j in range(N-1):
-				k = i*N + j
-				LAPLACE_MATRIX[k,k+1] = 1
-				LAPLACE_MATRIX[k+1,k] = 1
+			for j in range(N - 1):
+				k = i * N + j
+				LAPLACE_MATRIX[k, k + 1] = 1
+				LAPLACE_MATRIX[k + 1, k] = 1
 
-		self.V_x = np.zeros(N*N, dtype='c16')
+		LAPLACE_MATRIX = LAPLACE_MATRIX.tocsc() # Преобразование LAPLACE_MATRIX
+
+		self.V_x = np.zeros(N * N, dtype='c16')
 
 		for j in range(N):
 			for i in range(N):
@@ -391,8 +393,8 @@ class Simulate:
 		self.H1 = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX))
 		self.H1 = sp.sparse.dia_matrix(self.H1)
 
-		self.HX = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX - self.V_x_matrix)).tocsc()
-		self.HY = (1*sp.sparse.identity(N*N) - 1j*(delta_t/2)*(LAPLACE_MATRIX - self.V_y_matrix)).tocsc()
+		self.HX = (1 * sp.sparse.identity(N * N) - 1j * (delta_t / 2) * (LAPLACE_MATRIX - self.V_x_matrix)).tocsc()
+		self.HY = (1 * sp.sparse.identity(N * N) - 1j * (delta_t / 2) * (LAPLACE_MATRIX - self.V_y_matrix)).tocsc()
 
 		self.start_time = time()
 		self.i_time = time()
